@@ -14,6 +14,8 @@ import pywhatkit
 import wolframalpha
 import psutil
 import cv2
+import subprocess
+import platform
 from PIL import Image
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import QTimer, QTime, QDate, Qt
@@ -40,14 +42,27 @@ app_id = config.wolframalpha_id
 
 
 def search_and_open_folder(folder_name, base_paths):
+    """Search and open folder with cross-platform compatibility"""
     for base_path in base_paths:
-        for root, dirs, files in os.walk(base_path):
-            for dir_name in dirs:
-                if folder_name.lower() in dir_name.lower():
-                    folder_path = os.path.join(root, dir_name)
-                    os.startfile(folder_path)
-                    speak(f"Opening {dir_name} folder.")
-                    return True
+        try:
+            for root, dirs, files in os.walk(base_path):
+                for dir_name in dirs:
+                    if folder_name.lower() in dir_name.lower():
+                        folder_path = os.path.join(root, dir_name)
+                        
+                        # Cross-platform folder opening
+                        if platform.system() == "Windows":
+                            os.startfile(folder_path)
+                        elif platform.system() == "Darwin":  # macOS
+                            subprocess.run(["open", folder_path], check=True)
+                        else:  # Linux
+                            subprocess.run(["xdg-open", folder_path], check=True)
+                        
+                        speak(f"Opening {dir_name} folder.")
+                        return True
+        except Exception as e:
+            print(f"Error searching in {base_path}: {e}")
+            continue
     return False
 
 def get_ip_address():
@@ -60,22 +75,42 @@ def get_ip_address():
         return "unknown"
 
 
-def open_microsoft_office(application):
-    office_path = "C:\\Program Files\\Microsoft Office\\root\\Office16\\"  
-
-    if application.lower() == 'word':
-        os.startfile(os.path.join(office_path, 'WINWORD.EXE'))
-        speak("Opening Microsoft Word.")
-
-    elif application.lower() == 'powerpoint':
-        os.startfile(os.path.join(office_path, 'POWERPNT.EXE'))
-        speak("Opening Microsoft PowerPoint.")
-
-    elif application.lower() == 'excel':
-        os.startfile(os.path.join(office_path, 'EXCEL.EXE'))
-        speak("Opening Microsoft Excel.")
-    else:
-        speak(f"Sorry, I don't support opening {application} at the moment.")
+def open_office_application(application):
+    """Open office applications with cross-platform support"""
+    try:
+        app_lower = application.lower()
+        
+        if platform.system() == "Windows":
+            # Windows - Microsoft Office
+            office_path = "C:\\Program Files\\Microsoft Office\\root\\Office16\\"
+            if app_lower == 'word':
+                subprocess.run([os.path.join(office_path, 'WINWORD.EXE')], check=True)
+                speak("Opening Microsoft Word.")
+            elif app_lower == 'powerpoint':
+                subprocess.run([os.path.join(office_path, 'POWERPNT.EXE')], check=True)
+                speak("Opening Microsoft PowerPoint.")
+            elif app_lower == 'excel':
+                subprocess.run([os.path.join(office_path, 'EXCEL.EXE')], check=True)
+                speak("Opening Microsoft Excel.")
+        else:
+            # Linux/macOS - LibreOffice
+            if app_lower == 'word':
+                subprocess.run(['libreoffice', '--writer'], check=True)
+                speak("Opening LibreOffice Writer.")
+            elif app_lower == 'powerpoint':
+                subprocess.run(['libreoffice', '--impress'], check=True)
+                speak("Opening LibreOffice Impress.")
+            elif app_lower == 'excel':
+                subprocess.run(['libreoffice', '--calc'], check=True)
+                speak("Opening LibreOffice Calc.")
+        
+    except subprocess.CalledProcessError:
+        speak(f"Sorry, I couldn't open {application}. Please make sure it's installed.")
+    except FileNotFoundError:
+        speak(f"Sorry, {application} is not installed on this system.")
+    except Exception as e:
+        speak(f"Sorry, I encountered an error opening {application}.")
+        print(f"Error opening {application}: {e}")
         
 def get_battery_percentage():
     battery = psutil.sensors_battery()
@@ -159,17 +194,52 @@ class MainThread(QThread):
                     
                     
             elif "open notepad" in command:
-                speak("sure sir! opening notepad")
-                os.system("start notepad.exe")
+                try:
+                    speak("sure sir! opening text editor")
+                    if platform.system() == "Windows":
+                        subprocess.run(["notepad.exe"], check=True)
+                    else:
+                        # Try common Linux text editors
+                        try:
+                            subprocess.run(["gedit"], check=True)
+                        except FileNotFoundError:
+                            try:
+                                subprocess.run(["kate"], check=True)
+                            except FileNotFoundError:
+                                subprocess.run(["nano"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't open the text editor.")
+                    print(f"Error opening text editor: {e}")
             
             elif "close notepad" in command:
-                speak("closing notepad")
-                os.system("taskkill /im notepad.exe")
+                try:
+                    speak("closing text editor")
+                    if platform.system() == "Windows":
+                        subprocess.run(["taskkill", "/im", "notepad.exe"], check=True)
+                    else:
+                        # For Linux, we'll use pkill
+                        subprocess.run(["pkill", "-f", "gedit|kate|nano"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't close the text editor.")
+                    print(f"Error closing text editor: {e}")
                 
             elif "resume" in command:
-                speak("sure sir! here is your resume")
-                npath="C:/Users/Lenovo/Downloads/RAHUL KULKARNI_Resume.pdf"
-                os.startfile(npath)
+                try:
+                    speak("sure sir! here is your resume")
+                    # Use cross-platform path
+                    resume_path = config.resume_path
+                    if os.path.exists(resume_path):
+                        if platform.system() == "Windows":
+                            os.startfile(resume_path)
+                        elif platform.system() == "Darwin":
+                            subprocess.run(["open", resume_path], check=True)
+                        else:
+                            subprocess.run(["xdg-open", resume_path], check=True)
+                    else:
+                        speak("Sorry, I couldn't find your resume file.")
+                except Exception as e:
+                    speak("Sorry, I couldn't open your resume.")
+                    print(f"Error opening resume: {e}")
                 
             elif 'email' in command:
                 speak('sure sir! opening gmail')
@@ -197,24 +267,67 @@ class MainThread(QThread):
                 speak("Is this ok sir?")
             
             elif "camera" in command:
-                cap = cv2.VideoCapture(0)
-                while True:
-                    ret, img = cap.read()
-                    cv2.imshow('webcam', img)
-                    k = cv2.waitKey(50)
-                    if k == 27:
-                        break
-                cap.release()
-                cv2.destroyAllWindows()
+                try:
+                    speak("Opening camera. Press ESC to close.")
+                    cap = cv2.VideoCapture(0)
+                    
+                    if not cap.isOpened():
+                        speak("Sorry, I couldn't access the camera.")
+                        continue
+                    
+                    while True:
+                        ret, img = cap.read()
+                        if not ret:
+                            speak("Camera feed lost.")
+                            break
+                            
+                        cv2.imshow('Jarvis Webcam - Press ESC to close', img)
+                        k = cv2.waitKey(50)
+                        if k == 27:  # ESC key
+                            break
+                    
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    speak("Camera closed.")
+                    
+                except Exception as e:
+                    speak("Sorry, I encountered an error with the camera.")
+                    print(f"Camera error: {e}")
+                    try:
+                        cap.release()
+                        cv2.destroyAllWindows()
+                    except:
+                        pass
                 
 
-            elif "open command prompt" in command:
-                speak("sure sir! opening command prompt")
-                os.system("start cmd")
+            elif "open command prompt" in command or "open terminal" in command:
+                try:
+                    speak("sure sir! opening terminal")
+                    if platform.system() == "Windows":
+                        subprocess.run(["cmd"], check=True)
+                    else:
+                        # Try common Linux terminals
+                        try:
+                            subprocess.run(["gnome-terminal"], check=True)
+                        except FileNotFoundError:
+                            try:
+                                subprocess.run(["konsole"], check=True)
+                            except FileNotFoundError:
+                                subprocess.run(["xterm"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't open the terminal.")
+                    print(f"Error opening terminal: {e}")
                 
-            elif "close command prompt" in command:
-                speak("closing command prompt")
-                os.system("taskkill /im cmd.exe")
+            elif "close command prompt" in command or "close terminal" in command:
+                try:
+                    speak("closing terminal")
+                    if platform.system() == "Windows":
+                        subprocess.run(["taskkill", "/im", "cmd.exe"], check=True)
+                    else:
+                        subprocess.run(["pkill", "-f", "gnome-terminal|konsole|xterm"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't close the terminal.")
+                    print(f"Error closing terminal: {e}")
                 
             elif "internet speed" in command:
                 speak("Sure sir! let me check please wait")
@@ -232,13 +345,33 @@ class MainThread(QThread):
                 speak(f"Wifi Upload speed is {upload_net} gb per second")
 
             elif "open calculator" in command:
-                speak("sure sir! opening calculator")
-                npath="C:\\Windows\\System32\\calc.exe"
-                os.startfile(npath)
+                try:
+                    speak("sure sir! opening calculator")
+                    if platform.system() == "Windows":
+                        subprocess.run(["calc.exe"], check=True)
+                    else:
+                        # Try common Linux calculators
+                        try:
+                            subprocess.run(["gnome-calculator"], check=True)
+                        except FileNotFoundError:
+                            try:
+                                subprocess.run(["kcalc"], check=True)
+                            except FileNotFoundError:
+                                subprocess.run(["xcalc"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't open the calculator.")
+                    print(f"Error opening calculator: {e}")
 
             elif "close calculator" in command:
-                speak("closing calculator")
-                os.system("taskkill /f /im calc.exe")
+                try:
+                    speak("closing calculator")
+                    if platform.system() == "Windows":
+                        subprocess.run(["taskkill", "/f", "/im", "calc.exe"], check=True)
+                    else:
+                        subprocess.run(["pkill", "-f", "gnome-calculator|kcalc|xcalc"], check=True)
+                except Exception as e:
+                    speak("Sorry, I couldn't close the calculator.")
+                    print(f"Error closing calculator: {e}")
                 
             
             elif 'open folder' in command:
@@ -246,7 +379,8 @@ class MainThread(QThread):
                 folder_query = obj.mic_input().lower()
                 
                 if folder_query != 'none':
-                    base_paths_to_search = ["F:\\", "D:\\", "E:\\"]
+                    # Use cross-platform search paths from config
+                    base_paths_to_search = config.folder_search_paths
                     if not search_and_open_folder(folder_query, base_paths_to_search):
                         speak(f"Sorry, I couldn't find any folder with the name {folder_query}.")
                 else:
@@ -259,13 +393,13 @@ class MainThread(QThread):
                 pywhatkit.playonyt(video)
                 
             if 'word' in command:
-                open_microsoft_office('word')
+                open_office_application('word')
 
             elif 'excel' in command:
-                open_microsoft_office('excel')
+                open_office_application('excel')
 
             elif 'powerpoint' in command:
-                open_microsoft_office('powerpoint')
+                open_office_application('powerpoint')
 
             if "joke" in command:
                 joke = pyjokes.get_joke()
@@ -292,23 +426,44 @@ class MainThread(QThread):
 
 
             elif "take screenshot" in command or "take a screenshot" in command or "capture the screen" in command:
-                speak("By what name do you want to save the screenshot?")
-                name = obj.mic_input()
-                speak("Alright sir, taking the screenshot")
-                img = pyautogui.screenshot()
-                name = f"{name}.png"
-                img.save(name)
-                speak("The screenshot has been succesfully captured")
+                try:
+                    speak("By what name do you want to save the screenshot?")
+                    name = obj.mic_input()
+                    if name != 'none':
+                        speak("Alright sir, taking the screenshot")
+                        
+                        # Create screenshots directory if it doesn't exist
+                        os.makedirs("screenshots", exist_ok=True)
+                        
+                        img = pyautogui.screenshot()
+                        screenshot_name = f"screenshots/{name}.png"
+                        img.save(screenshot_name)
+                        speak("The screenshot has been successfully captured")
+                        
+                        # Store the filename for later use
+                        global last_screenshot
+                        last_screenshot = screenshot_name
+                    else:
+                        speak("Sorry, I didn't get the name for the screenshot.")
+                except Exception as e:
+                    speak("Sorry, I couldn't take the screenshot.")
+                    print(f"Screenshot error: {e}")
 
             elif "show me the screenshot" in command:
                 try:
-                    img = Image.open('D://JARVIS//JARVIS_2.0//' + name)
-                    img.show(img)
-                    speak("Here it is sir")
-                    time.sleep(2)
-
-                except IOError:
+                    if 'last_screenshot' in globals() and os.path.exists(last_screenshot):
+                        if platform.system() == "Windows":
+                            os.startfile(last_screenshot)
+                        elif platform.system() == "Darwin":
+                            subprocess.run(["open", last_screenshot], check=True)
+                        else:
+                            subprocess.run(["xdg-open", last_screenshot], check=True)
+                        speak("Here it is sir")
+                    else:
+                        speak("Sorry sir, I couldn't find any recent screenshot")
+                except Exception as e:
                     speak("Sorry sir, I am unable to display the screenshot")
+                    print(f"Error showing screenshot: {e}")
 
             
 
